@@ -1,49 +1,43 @@
 #include<bits/stdc++.h>
 
+
 // Verification : 
-// Line Add Get Min - Library Checker (https://judge.yosupo.jp/submission/128025)
-// Segment Add Get Min - Library Checker (https://judge.yosupo.jp/submission/128050)
+// Line Add Get Min - Library Checker (// https://judge.yosupo.jp/submission/132907)
+// Segment Add Get Min - Library Checker (https://judge.yosupo.jp/submission/132915)
+// note : ↑の制約 : |a|,|x| <= 10^9, |b| <= 10^18
+
+template<typename T, bool(*comp)(T, T), T(*e)(), T(*xub)()>
 struct LiChaoTree {
     struct Line {
-        long long a, b; // 傾き,切片
-        Line (long long _a, long long _b) : a(_a), b(_b) {}
-        long long operator()(long long x) const { return a * x + b; }
-        void swap(Line& other) {
-            std::swap(a, other.a);
-            std::swap(b, other.b);
-        }
+        T a, b; // 傾き,切片
+        Line (T _a, T _b) : a(_a), b(_b) {}
+        T operator()(T x) const { return a * x + b; }   
     };
-    int n; // セグ木の最下層サイズ
-    static constexpr long long inf   = 1LL << 30; // infll > max(a) * inf + max(b), inf > max(x[i])
-    static constexpr long long infll = 1LL << 61; // infll > max(a) * inf + max(b)
-    std::vector<long long> x; // x座標
+    int n;                    // セグ木の最下層サイズ
+    std::vector<T> x;         // x座標
     std::vector<Line> dat;    // セグ木のノード 1-indexed. dat[n+i] = x[i].
 
     LiChaoTree () {}
-    // Constraints: |x[i]| <= 10^9
-    // 制約が広い場合 inf と infll を増やせ.
-    LiChaoTree (const std::vector<long long>& _x) {
+    // max(x) < xub() , comp(max(a) * xub() + max(b), e()) = false.
+    template<typename S>
+    LiChaoTree (const std::vector<S>& _x) {
         n = 1;
         while(n < (int)_x.size()) n <<= 1;
-        x.assign(n, inf); // ここは多分大丈夫
+        x.assign(n, xub());
         for(int i = 0; i < (int)_x.size(); ++i) x[i] = _x[i];
-        dat.assign(2 * n, {0, infll});
+        dat.assign(2 * n, {0, e()});
     }
 
     // y = ax+b を追加
-    // Constraints : |a| <= 10^9, |b| <= 10^18
-    // 制約が広い場合 infll を増やせ. オーバーフロー気にしなくて良いので 8*10^9くらいでもおけそう
-    void add_line(long long a, long long b) {
+    void add_line(T a, T b) {
         add_line(a, b, 1, 0, n);
     }
 
     // y = ax+b を 区間 [x[l], x[r]) に追加
-    // Constraints : |a| <= 10^9, |b| <= 10^18
-    // 制約が広い場合 infll を増やせ. オーバーフロー気にしなくて良いので 8*10^9くらいでもおけそう
-    void add_segment(long long a, long long b, int l, int r) {
+    void add_segment_at(T a, T b, int l, int r) {
         int nl = n + l, nr = n + r; // ノード番号
-        int sz = 1; // 今見てるノードの幅
-        // l, r は x[l], x[r] に対応してます 非再帰セグ木
+        int sz = 1;                 // 今見てるノードの幅
+        // l, r は x[l], x[r] に対応. cf.非再帰セグ木
         while(l < r) {
             if (nl & 1) {
                 add_line(a, b, nl, l, l + sz);
@@ -60,45 +54,65 @@ struct LiChaoTree {
         }
     }
 
-    // y = ax+b を ノード番号nnode (左端l, 右端r）に追加
-    void add_line(long long a, long long b, int nnode, int l, int r) {
-        Line B(a, b);
-        while(nnode < 2 * n) { // ノードが存在する限りトップダウンに更新を実行する
-            int m = (l + r) >> 1;
-            const auto& A = dat[nnode];
-
-            bool ld = B(x[l]) < A(x[l]);
-            bool md = B(x[m]) < A(x[m]);
-            bool rd = B(x[r-1]) < A(x[r-1]);
-
-            if(!ld && !rd) return;
-            if(ld && rd) {
-                dat[nnode] = B;
-                return;
-            }
-            // lまたはrだけでBが下になるようにする
-            if(md) dat[nnode].swap(B);
-
-            if(ld == md) { // 右側
-                nnode = (nnode << 1) + 1;
-                l = m;
-            }
-            else { // 左側
-                nnode = (nnode << 1);
-                r = m;
-            }
-        }
+    // y = ax+b を 区間 [lval, rval) に追加 ;余計な定数倍アリ
+    void add_segment(T a, T b, int lval, int rval) {
+        add_segment_at(a, b,
+            std::lower_bound(x.begin(), x.end(), lval) - x.begin(),
+            std::lower_bound(x.begin(), x.end(), rval) - x.begin()
+        );
     }
 
-    // x[i] での最小値を答える
-    long long min(int i) const {
-        const auto xt = x[i];
-        i += n;
-        long long res = infll;
-        while(i > 0) {
-            res = std::min(res, dat[i](xt));
-            i >>= 1;
+    // x[i] での最小値
+    T query_at(int index) const {
+        const auto xt = x[index];
+        index += n;
+        T res = e();
+        while(index > 0) {  // note:ここはforloopにできます
+            chval(res, dat[index](xt));
+            index >>= 1;
         }
         return res;
     }
+    // x = val での最小値 ;余計な定数倍アリ
+    T query(T val) const {
+        return query_at(std::lower_bound(x.begin(), x.end(), val) - x.begin());
+    }
+
+  private:
+    void chval(T& a, T b) const { // chminみたいな
+        if(comp(b, a)) a = b;
+    }
+    // y = ax+b を ノード番号 nnode (左端l, 右端r）に追加
+    void add_line(T a, T b, int nnode, int l, int r) {
+        Line B(a, b);
+        while(nnode < 2 * n) {  // ノードが存在する限りトップダウンに更新を実行する
+            int m = (l + r) >> 1;
+            const auto& A = dat[nnode];
+
+            bool ld = comp(B(x[l]), A(x[l]));
+            bool md = comp(B(x[m]), A(x[m]));
+            bool rd = comp(B(x[r-1]), A(x[r-1]));
+
+            if(md) {
+                std::swap(dat[nnode], B);
+                ld = !ld, md = !md, rd = !rd;
+            }
+            if(ld == rd) return;
+
+            if(ld) { // 左側
+                nnode = (nnode << 1);
+                r = m;
+            }
+            else {   // 右側
+                nnode = (nnode << 1) + 1;
+                l = m;
+            }
+        }
+    }
 };
+
+// using T = long long;
+// bool comp(T a, T b) {return a < b;}
+// constexpr T e() {return 1LL<<62;}
+// constexpr T xub() {return 1LL<<31;}
+// LiChaoTree<T, comp, e, xub> lct(x);
